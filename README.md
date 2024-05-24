@@ -1,4 +1,36 @@
-# t-deck-keyboard-ex
+# t-deck-keyboard-hydra
+
+This repo further expands on hasn0life's extended keyboard firmware for the Lilygo t-deck.   
+Critically, it adds the ability for the main ESP32-S3 to toggle the backlight, and to set a 'raw output' mode, for firmwares that want to implement their own, more advanced keyboard features. 
+
+This has been made specifically to enable the possibility of using the advanced features in MicroHydra's KeyBoard module (like key-repeating, global keyboard shortcuts, held keys, etc).
+
+I used hasn0life's firmware as a jumping off point for two reasons; First being that I had difficulties actually getting the original firmware code to work at all. And second, because flashing new firmware on the T-deck's keyboard is annoying, and I imagine that most people would prefer to only have to do it once, so you might as well get the best of both worlds in one firmware :)   
+The kb firmware defaults to setting 'raw output' off, to allow backwards-compatibility with other firmwares. 
+
+<br/>
+
+## Reference
+
+For reference, here are the flags used for sending settings from the main controller, to the keyboard:   
+  `0` - Backlight off   
+  `1` - Backlight on   
+  `2` - Raw output off   
+  `3` - Raw output on   
+
+And, here's the formula used for packing columns/rows into an integer for raw output:   
+`rawKeys[rawIndex] = (colIndex << 4) | (rowIndex + 1)` 
+
+<br/>
+<br/>
+<br/>
+
+That's all I have to add. Here's the rest of the original readme by hasn0life, which includes some further information about their firmware (and how to flash it):
+
+<br/>
+
+----
+
 
 This repo adds the following features to the keyboard microcontroller in the [Lilygo t-deck](https://www.lilygo.cc/products/t-deck):
  - sym + $/speaker now makes forward slash \
