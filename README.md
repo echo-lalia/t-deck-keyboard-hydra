@@ -22,6 +22,10 @@ And, here's the formula used for packing columns/rows into an integer for raw ou
 `rawKeys[rawIndex] = (colIndex << 4) | (rowIndex + 1)` 
 
 <br/>
+
+The firmware also pulses the interrupt pin to HIGH any time the keyboard would print a keystroke.
+
+<br/>
 <br/>
 <br/>
 
