@@ -5,11 +5,13 @@
  * @copyright Copyright (c) 2023  Shenzhen Xin Yuan Electronic Technology Co., Ltd
  * @date      2023-04-11
  *
- * modifed by hasn0life 2023-10-23
+ * modified by hasn0life 2023-10-23
+ * modified by echo-lalia 2024-5-24
  */
 
 #define I2C_DEV_ADDR 0x55
 #define keyboard_BL_PIN  9
+#define keyboard_INT_PIN 8
 #define KB_SDA  2
 #define KB_SCL  10
 #include "Wire.h"
@@ -39,6 +41,10 @@ enum longpress_state long_pressed = NO_KEY;
 uint32_t last_time = 0;
 const uint32_t LONGPRESS_DURATION = 400;
 
+// value stores setting for 'raw' output or default output
+bool rawOutput = false;
+const int rawKeysCount = 4;
+uint8_t rawKeys[rawKeysCount];
 
 void onRequest();
 void readMatrix();
@@ -47,6 +53,10 @@ bool keyActive(int colIndex, int rowIndex);
 bool isPrintableKey(int colIndex, int rowIndex);
 void printMatrix();
 void set_keyboard_BL(bool state);
+
+// process config changes on receive
+void onReceive(int receivedBytes);
+void clearRawOut(int clearStart);
 
 void setup()
 {
@@ -135,12 +145,20 @@ void setup()
 
     Serial.setDebugOutput(true);
     Wire.onRequest(onRequest);
+
+    // init config handler
+    Wire.onReceive(onReceive);
+
     Wire.begin((uint8_t)I2C_DEV_ADDR, KB_SDA, KB_SCL, 100000); //needs frequency or it'll think it's in slave mode
     // Wire.begin((uint8_t)I2C_DEV_ADDR, SDA, SCL);
 
     Serial.println("Starting keyboard!");
     pinMode(keyboard_BL_PIN, OUTPUT);
     digitalWrite(keyboard_BL_PIN, BL_state);
+
+    // add intrupt:
+    pinMode(keyboard_INT_PIN, OUTPUT);
+    digitalWrite(keyboard_INT_PIN, LOW);
 
 
     Serial.println("4");
@@ -186,12 +204,12 @@ void loop()
       long_pressed = NO_KEY;
     }
 
-    if (keyActive(0, 4) && keyPressed(3, 4)) { //Alt+B
-
+    if (keyActive(0, 4) && keyPressed(3, 4) && (rawOutput == false)) { //Alt+B
         Serial.println("Alt+B");
         BL_state = !BL_state;
         set_keyboard_BL(BL_state);
     }
+
     if (keyActive(0, 4) && keyPressed(2, 5)) { //Alt+C
         Serial.println("Alt+C");
         comdata = (char)0x0C;
@@ -223,24 +241,73 @@ void loop()
           symlock = true;
         }
     }
+
+    // pulse interupt line for main controller
+    if(comdata_flag == true){
+        digitalWrite(keyboard_INT_PIN, HIGH);
+    } else {
+        digitalWrite(keyboard_INT_PIN, LOW);
+    }
 }
 
 void onRequest()
 {
-    if (comdata_flag) {
-        Wire.print(comdata);
+    if (rawOutput){
+        // print raw array
+        Wire.write(rawKeys, rawKeysCount);
         comdata_flag = false;
-        Serial.print(" comdata :");
-        Serial.println(comdata);
+
     } else {
-        Wire.print((char)0x00);
+
+        if (comdata_flag) {
+            Wire.print(comdata);
+            comdata_flag = false;
+            Serial.print(" comdata :");
+            Serial.println(comdata);
+        } else {
+            Wire.print((char)0x00);
+        }
     }
 
-    // Serial.println("onRequest");
 }
+
+
+// allow host to send options data to keyboard
+void onReceive(int receivedBytes)
+{
+    int message = Wire.read();
+    // set backlight (vals 0 and 1)
+    if (message == 0){
+      BL_state = false;
+      digitalWrite(keyboard_BL_PIN, false);
+    }
+    if (message == 1){
+      BL_state = true;
+      digitalWrite(keyboard_BL_PIN, true);
+    }
+
+    // set raw output (vals 2 and 3)
+    if (message == 2){
+      rawOutput = false;
+    }
+    if (message == 3){
+      rawOutput = true;
+    }
+}
+
+
+// reset raw output to 0s (starting at clearstart)
+void clearRawOut(int clearStart)
+{
+    for (int rawIndex = clearStart; rawIndex < rawKeysCount; rawIndex++) {
+      rawKeys[rawIndex] = 0;
+    }
+}
+
 
 void readMatrix()
 {
+    int rawIndex = 0;
     int delayTime = 0;
     // iterate the columns
     for (int colIndex = 0; colIndex < colCount; colIndex++) {
@@ -257,6 +324,13 @@ void readMatrix()
 
             bool buttonPressed = (digitalRead(rowCol) == LOW);
 
+            // store raw reads
+            if (buttonPressed && (rawIndex < rawKeysCount)){
+              // pack row&col into integer for raw output
+              rawKeys[rawIndex] = (colIndex << 4) | (rowIndex + 1);
+              rawIndex++;
+            }
+            
             keys[colIndex][rowIndex] = buttonPressed;
 
             if ((lastValue[colIndex][rowIndex] != buttonPressed)) {
@@ -287,6 +361,9 @@ void readMatrix()
         // disable the column
         pinMode(curCol, INPUT);
     }
+
+    // clear the remaining rawOutput slots
+    clearRawOut(rawIndex);
 }
 
 bool keyPressed(int colIndex, int rowIndex)
